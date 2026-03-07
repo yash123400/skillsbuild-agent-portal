@@ -1,5 +1,14 @@
 import os
 import json
+import sys
+
+# Override sqlite3 for ChromaDB compatibility on Vercel
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
 import chromadb
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
