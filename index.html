@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Catalog | IBM SkillsBuild Search</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0f62fe;
+            --primary-hover: #0353e9;
+            --bg: #f4f4f4;
+            --card-bg: #ffffff;
+            --text-main: #161616;
+            --text-muted: #525252;
+            --border: #e0e0e0;
+            --badge-bg: #e0eaff;
+            --badge-text: #0043ce;
+        }
+
+        body {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            line-height: 1.5;
+        }
+
+        header {
+            background: #fff;
+            border-bottom: 1px solid var(--border);
+            padding: 24px 0;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .search-section {
+            background: #fff;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+            margin-bottom: 40px;
+            display: flex;
+            gap: 16px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 16px 20px;
+            font-size: 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+        }
+
+        button.search-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0 32px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button.search-btn:hover {
+            background: var(--primary-hover);
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+            gap: 24px;
+        }
+
+        .course-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .course-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+        }
+
+        .category-badge {
+            display: inline-block;
+            background: var(--badge-bg);
+            color: var(--badge-text);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+            align-self: flex-start;
+        }
+
+        .course-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0 0 12px 0;
+            line-height: 1.3;
+        }
+
+        .course-title a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .course-title a:hover {
+            text-decoration: underline;
+        }
+
+        .course-description {
+            font-size: 15px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .meta-row {
+            display: flex;
+            gap: 24px;
+            margin-top: auto;
+            font-size: 13px;
+            color: #6f6f6f;
+            padding-top: 16px;
+            border-top: 1px solid #f4f4f4;
+            margin-bottom: 20px;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .view-btn {
+            background: white;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .view-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            display: none;
+        }
+
+        .error {
+            color: #da1e28;
+            background: #fff1f1;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            border: 1px solid #ffb3b8;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .search-section {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="container"
+            style="margin: 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0 20px;">
+            <div style="font-weight: 800; font-size: 24px; color: var(--primary);">IBM <span
+                    style="color: #161616; font-weight: 300;">SkillsBuild</span></div>
+            <div style="font-size: 14px; color: var(--text-muted);">Sovereign Catalog Search</div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="search-section">
+            <input type="text" id="query" placeholder="Search courses (e.g. AI, Cyber, Finance)..."
+                onkeypress="if(event.key==='Enter') performSearch()">
+            <button class="search-btn" onclick="performSearch()">Search Catalog</button>
+        </div>
+
+        <div id="error" class="error"></div>
+        <div id="loading" class="loading">Analyzing catalog semantics...</div>
+        <div id="results" class="results-grid"></div>
+    </div>
+
+    <script>
+        async function performSearch() {
+            const query = document.getElementById('query').value.trim();
+            if (!query) return;
+
+            const resultsDiv = document.getElementById('results');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+
+            resultsDiv.innerHTML = '';
+            loading.style.display = 'block';
+            error.style.display = 'none';
+
+            try {
+                const response = await fetch(`/api/skillsbuild/search?q=${encodeURIComponent(query)}&n=6`);
+                if (!response.ok) throw new Error('Search request failed');
+
+                const data = await response.json();
+                loading.style.display = 'none';
+
+                if (data.courses.length === 0) {
+                    resultsDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #666;">No courses found for this query.</div>';
+                    return;
+                }
+
+                data.courses.forEach(course => {
+                    const card = document.createElement('div');
+                    card.className = 'course-card';
+
+                    card.innerHTML = `
+                    <div class="category-badge">${course.category}</div>
+                    <h3 class="course-title">
+                        <a href="${course.url}" target="_blank">${course.title}</a>
+                    </h3>
+                    <p class="course-description">${course.description}</p>
+                    <div class="meta-row">
+                        <div class="meta-item">
+                            <span style="opacity: 0.6;">👤</span> ${course.audience}
+                        </div>
+                        <div class="meta-item">
+                            <span style="opacity: 0.6;">⏱️</span> ${course.duration}
+                        </div>
+                        <div class="meta-item">
+                            <span style="opacity: 0.6;">🎯</span> ${Math.round(course.similarity * 100)}% Match
+                        </div>
+                    </div>
+                    <a href="${course.url}" class="view-btn" target="_blank">
+                        View on SkillsBuild 
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13,14H3c-0.6,0-1-0.4-1-1V3c0-0.6,0.4-1,1-1h5v1H3v10h10V8h1v5C14,13.6,13.6,14,13,14z"></path><path d="M10 1L10 2 13.3 2 9 6.3 9.7 7 14 2.7 14 6 15 6 15 1z"></path></svg>
+                    </a>
+                `;
+                    resultsDiv.appendChild(card);
+                });
+            } catch (err) {
+                loading.style.display = 'none';
+                error.textContent = 'Connection Error: Unable to reach sovereign catalog engine.';
+                error.style.display = 'block';
+                console.error(err);
+            }
+        }
+
+        // Auto-search on load if query exists in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const q = urlParams.get('q');
+        if (q) {
+            document.getElementById('query').value = q;
+            performSearch();
+        }
+    </script>
+
+</body>
+
+</html>
