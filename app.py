@@ -65,7 +65,9 @@ def skillsbuild_search():
             "courses": courses
         })
     except Exception as e:
-        return jsonify({"error": "Search failed", "details": str(e)}), 500
+        import traceback
+        error_details = traceback.format_exc()
+        return jsonify({"error": "Search failed", "details": str(e), "traceback": error_details}), 500
 
 if __name__ == '__main__':
     # Running locally
