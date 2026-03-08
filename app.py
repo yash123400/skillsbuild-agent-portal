@@ -1,83 +1,105 @@
 import os
 import json
-import sys
-
-# Override sqlite3 for ChromaDB compatibility on Vercel
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
-
-import chromadb
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-# Use absolute path relative to this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "skillsbuild_memory")
+CATALOG_PATH = os.path.join(BASE_DIR, "catalog.json")
 
-# Initialize ChromaDB client lazily
-_client = None
-_collection = None
+# Load catalog once
+catalog_data = []
+if os.path.exists(CATALOG_PATH):
+    try:
+        with open(CATALOG_PATH, "r") as f:
+            catalog_data = json.load(f)
+    except Exception as e:
+        print(f"Error loading catalog.json: {e}")
 
-def get_collection():
-    global _client, _collection
-    if _client is None:
-        _client = chromadb.PersistentClient(path=DB_PATH)
-        _collection = _client.get_collection(name="courses")
-    return _collection
+def simple_search(query, limit=5):
+    if not query:
+        return []
+    
+    query = query.lower()
+    matches = []
+    
+    for item in catalog_data:
+        doc = item.get("doc", "").lower()
+        meta = item.get("meta", {})
+        title = meta.get("title", "").lower()
+        category = meta.get("category", "").lower()
+        
+        # Simple keyword match
+        score = 0
+        if query in title: score += 10
+        if query in category: score += 5
+        if query in doc: score += 2
+        
+        if score > 0:
+            matches.append({
+                "score": score,
+                "doc": item.get("doc"),
+                "meta": meta
+            })
+            
+    # Sort by score
+    matches.sort(key=lambda x: x["score"], reverse=True)
+    return matches[:limit]
 
 @app.route('/')
-def index():
+def catalog():
     return send_from_directory(BASE_DIR, 'index.html')
 
+@app.route('/chat')
+def chat():
+    return send_from_directory(BASE_DIR, 'chat.html')
+
 @app.route('/api/skillsbuild/search', methods=['GET'])
-def skillsbuild_search():
+def skillsbuild_search_get():
     query = request.args.get('q', '')
     limit = int(request.args.get('n', 5))
     
-    if not query:
-        return jsonify({"error": "Query parameter 'q' is required"}), 400
+    results = simple_search(query, limit)
     
-    try:
-        collection = get_collection()
-        results = collection.query(
-            query_texts=[query],
-            n_results=limit,
-            include=["documents", "metadatas", "distances"]
-        )
-        
-        courses = []
-        for i, (doc, meta, dist) in enumerate(zip(
-            results["documents"][0],
-            results["metadatas"][0],
-            results["distances"][0]
-        )):
-            courses.append({
-                "rank": i + 1,
-                "title": meta.get("title", "N/A"),
-                "url": meta.get("url", ""),
-                "category": meta.get("category", "General"),
-                "audience": meta.get("audience", "All Learners"),
-                "duration": meta.get("duration", "Self-paced"),
-                "description": doc[:300] if doc else "",
-                "similarity": round(1 - dist, 4)
-            })
-            
-        return jsonify({
-            "query": query,
-            "total_results": len(courses),
-            "courses": courses
+    courses = []
+    for i, res in enumerate(results):
+        meta = res["meta"]
+        courses.append({
+            "rank": i + 1,
+            "title": meta.get("title", "N/A"),
+            "url": meta.get("url", ""),
+            "category": meta.get("category", "General"),
+            "audience": meta.get("audience", "All Learners"),
+            "duration": meta.get("duration", "Self-paced"),
+            "description": res["doc"][:300] if res["doc"] else "",
+            "similarity": 0.95 - (i * 0.05) # Mocked similarity for UI
         })
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        return jsonify({"error": "Search failed", "details": str(e), "traceback": error_details}), 500
+            
+    return jsonify({
+        "query": query,
+        "total_results": len(courses),
+        "courses": courses
+    })
+
+# API for the chatbot (POST /api/search)
+@app.route('/api/search', methods=['POST'])
+def chatbot_search():
+    data = request.json or {}
+    query = data.get("query", "")
+    
+    results = simple_search(query, limit=3)
+    
+    formatted_results = []
+    for i, res in enumerate(results):
+        meta = res["meta"]
+        # Format string similar to what the chatbot regex expects: "Course: Title. Eligibility: Audience. Duration: time"
+        formatted_results.append(f"{i+1}. Course: {meta.get('title')}. Eligibility: {meta.get('audience')}. Duration: {meta.get('duration')}")
+            
+    return jsonify({
+        "results": formatted_results
+    })
 
 if __name__ == '__main__':
-    # Running locally
     app.run(port=5003, debug=True)

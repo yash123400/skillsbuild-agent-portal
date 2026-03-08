@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillsBuild Agent - Corporate Minimalist</title>
+    <!-- IBM Plex Sans font -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+
+    <!-- React & ReactDOM (UMD via CDN) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"IBM Plex Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        ibmBlue: {
+                            60: '#156df9',
+                            10: '#edf5ff',
+                        },
+                        ibmGray: {
+                            10: '#f4f4f4',
+                            20: '#e0e0e0',
+                            80: '#393939',
+                            100: '#161616',
+                        }
+                    },
+                    borderRadius: {
+                        'soft': '20px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            background-color: #fdfdfd;
+        }
+
+        /* Scrollbar styles */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c6c6c6;
+        }
+    </style>
+</head>
+
+<body class="text-ibmGray-100 antialiased overflow-hidden">
+    <!-- React Root -->
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const App = () => {
+            const [messages, setMessages] = useState([
+                { role: 'assistant', content: 'Welcome to SkillsBuild! To help you best, are you a student, educator, or adult learner?' }
+            ]);
+            const [inputValue, setInputValue] = useState('');
+            const [recommendedCourses, setRecommendedCourses] = useState([]);
+            const [isSearching, setIsSearching] = useState(false);
+            const messagesEndRef = useRef(null);
+
+            const fetchRecommendations = async (query) => {
+                setIsSearching(true);
+                try {
+                    const response = await fetch('/api/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query })
+                    });
+                    const data = await response.json();
+                    if (data.results && data.results.length > 0) {
+                        setRecommendedCourses(data.results);
+                    }
+                } catch (error) {
+                    console.error("Error fetching courses:", error);
+                }
+                setIsSearching(false);
+            };
+
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            };
+
+            useEffect(() => {
+                scrollToBottom();
+            }, [messages]);
+
+            const handleSend = (e) => {
+                e.preventDefault();
+                if (!inputValue.trim()) return;
+
+                const userQuery = inputValue.trim();
+                const newMessages = [...messages, { role: 'user', content: userQuery }];
+                setMessages(newMessages);
+                setInputValue('');
+
+                // Simulate simplistic agent flow based on our "start-guidance" rules
+                setTimeout(() => {
+                    let agentResponse = "I'm checking our catalog to find you the best matches.";
+                    if (userQuery.toLowerCase().includes('student') || userQuery.toLowerCase().includes('adult') || userQuery.toLowerCase().includes('educator')) {
+                        agentResponse = "Great! What specific tech field interests you today (e.g., AI, Cyber, Data)?";
+                    } else if (userQuery.toLowerCase().match(/ai|cyber|data|security/)) {
+                        agentResponse = `Awesome! I've located some excellent courses for you in our knowledge base. Check out the 'Recommended' sidebar.`;
+                        fetchRecommendations(userQuery);
+                    }
+                    setMessages(prev => [...prev, { role: 'assistant', content: agentResponse }]);
+                }, 800);
+            };
+
+            return (
+                <div className="flex h-screen w-full max-w-7xl mx-auto overflow-hidden bg-white shadow-xl sm:rounded-soft my-0 sm:my-8 border border-ibmGray-20">
+
+                    {/* Main Chat Area */}
+                    <div className="flex-1 flex flex-col bg-white">
+                        {/* Header */}
+                        <header className="px-8 py-6 border-b border-ibmGray-10 flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 bg-ibmBlue-60 text-white rounded-soft flex items-center justify-center font-bold text-lg">
+                                    IBM
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-semibold text-ibmGray-100">SkillsBuild Agent</h1>
+                                    <p className="text-sm text-gray-500">Corporate & Welcome Mode</p>
+                                </div>
+                            </div>
+                            <a href="/" className="text-ibmBlue-60 border border-ibmBlue-60 px-4 py-2 rounded-soft text-sm font-medium hover:bg-ibmBlue-60 hover:text-white transition-colors">
+                                View Course Catalog
+                            </a>
+                        </header>
+
+                        {/* Messages */}
+                        <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+                            {messages.map((msg, idx) => (
+                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`max-w-[70%] px-5 py-4 rounded-soft shadow-sm text-[15px] leading-relaxed
+                                        ${msg.role === 'user' ? 'bg-ibmBlue-60 text-white rounded-br-none' : 'bg-ibmGray-10 text-ibmGray-80 rounded-bl-none border border-ibmGray-20/50'}
+                                    `}>
+                                        {msg.content}
+                                    </div>
+                                </div>
+                            ))}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Input Area */}
+                        <div className="p-6 md:p-8 bg-white border-t border-ibmGray-10">
+                            <form onSubmit={handleSend} className="relative flex items-center">
+                                <input
+                                    type="text"
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    placeholder="Type your message here..."
+                                    className="w-full bg-ibmGray-10 border-0 rounded-soft pl-6 pr-14 py-4 text-ibmGray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-ibmBlue-60/40 transition-shadow"
+                                />
+                                <button type="submit"
+                                    className="absolute right-2 p-2 bg-ibmBlue-60 text-white rounded-full hover:bg-blue-700 transition-colors w-10 h-10 flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                                    </svg>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    {/* Right Sidebar - Recommended Courses */}
+                    <div className="w-80 border-l border-ibmGray-20 bg-[#fafafa] flex flex-col hidden lg:flex">
+                        <div className="p-6 border-b border-ibmGray-20">
+                            <h2 className="text-lg font-semibold text-ibmGray-80">Recommended for You</h2>
+                            <p className="text-sm text-gray-500 mt-1">Sourced from SkillsBuild Knowledge Base</p>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {isSearching ? (
+                                <div className="flex justify-center items-center py-10">
+                                    <div className="animate-pulse flex space-x-2 items-center">
+                                        <div className="w-2 h-2 bg-ibmBlue-60 rounded-full"></div>
+                                        <div className="w-2 h-2 bg-ibmBlue-60 rounded-full"></div>
+                                        <div className="w-2 h-2 bg-ibmBlue-60 rounded-full"></div>
+                                    </div>
+                                </div>
+                            ) : recommendedCourses.length > 0 ? (
+                                recommendedCourses.map((course, idx) => {
+                                    /* Parsing out generic course structure like "Course: AI Basics. Eligibility: Students. Duration: 5h" */
+                                    const match = course.match(/\d+\.\s+Course:\s+(.*?)\./i) || [];
+                                    const titleMatch = match[1] || course.replace(/^\d+\.\s*/, '');
+
+                                    return (
+                                        <div key={idx} className="bg-white p-5 rounded-soft border border-ibmGray-20 shadow-sm hover:border-ibmBlue-60/30 transition-colors cursor-pointer group">
+                                            <div className="flex items-start justify-between">
+                                                <div className="w-8 h-8 rounded-full bg-ibmBlue-10 text-ibmBlue-60 flex items-center justify-center font-bold text-xs mb-3">
+                                                    #{idx + 1}
+                                                </div>
+                                                <svg className="w-5 h-5 text-gray-400 group-hover:text-ibmBlue-60 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                                            </div>
+                                            <h3 className="font-semibold text-ibmGray-100 text-[15px] mb-2 leading-tight">{titleMatch}</h3>
+                                            <p className="text-xs text-gray-500 line-clamp-2">{course.replace(/^\d+\.\s*/, '')}</p>
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                <div className="text-center py-12 text-gray-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                    </svg>
+                                    <p className="text-sm">Tell the agent what you are interested in to see recommendations here.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>

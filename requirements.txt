@@ -1,5 +1,2 @@
 flask
 flask-cors
-chromadb
-pydantic
-pysqlite3-binary
