@@ -8,6 +8,8 @@
     <!-- IBM Plex Sans font -->
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&display=swap"
         rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet">
 
     <!-- React & ReactDOM (UMD via CDN) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -207,21 +209,33 @@
                                 </div>
                             ) : recommendedCourses.length > 0 ? (
                                 recommendedCourses.map((course, idx) => {
-                                    /* Parsing out generic course structure like "Course: AI Basics. Eligibility: Students. Duration: 5h" */
-                                    const match = course.match(/\d+\.\s+Course:\s+(.*?)\./i) || [];
-                                    const titleMatch = match[1] || course.replace(/^\d+\.\s*/, '');
-
                                     return (
-                                        <div key={idx} className="bg-white p-5 rounded-soft border border-ibmGray-20 shadow-sm hover:border-ibmBlue-60/30 transition-colors cursor-pointer group">
-                                            <div className="flex items-start justify-between">
-                                                <div className="w-8 h-8 rounded-full bg-ibmBlue-10 text-ibmBlue-60 flex items-center justify-center font-bold text-xs mb-3">
-                                                    #{idx + 1}
+                                        <article key={idx} className="bg-white rounded-lg border border-ibmGray-20 shadow-sm overflow-hidden flex flex-col group">
+                                            <div className="p-5 flex-1 space-y-3">
+                                                <div className="inline-flex px-3 py-1 rounded-full bg-ibmBlue-10">
+                                                    <span className="text-ibmBlue-60 text-[10px] font-semibold uppercase tracking-wider">{course.category || 'General'}</span>
                                                 </div>
-                                                <svg className="w-5 h-5 text-gray-400 group-hover:text-ibmBlue-60 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                                                <a className="block text-ibmBlue-60 text-lg font-bold hover:underline leading-snug" href={course.url || '#'} target="_blank">
+                                                    {course.title}
+                                                </a>
+                                                <p className="text-ibmGray-80 text-sm leading-relaxed line-clamp-2">
+                                                    {course.description}
+                                                </p>
+                                                <div className="flex items-center gap-4 text-gray-500 text-xs pt-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="material-symbols-outlined text-[16px]">schedule</span>
+                                                        <span>{course.duration || 'Self-paced'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="material-symbols-outlined text-[16px]">group</span>
+                                                        <span>{course.audience || 'All Learners'}</span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <h3 className="font-semibold text-ibmGray-100 text-[15px] mb-2 leading-tight">{titleMatch}</h3>
-                                            <p className="text-xs text-gray-500 line-clamp-2">{course.replace(/^\d+\.\s*/, '')}</p>
-                                        </div>
+                                            <a href={course.url || '#'} target="_blank" className="w-full bg-ibmBlue-60 hover:bg-blue-700 text-white font-semibold py-3 px-6 flex items-center justify-center gap-2 transition-colors text-[14px]">
+                                                View on SkillsBuild <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                                            </a>
+                                        </article>
                                     );
                                 })
                             ) : (

@@ -94,8 +94,14 @@ def chatbot_search():
     formatted_results = []
     for i, res in enumerate(results):
         meta = res["meta"]
-        # Format string similar to what the chatbot regex expects: "Course: Title. Eligibility: Audience. Duration: time"
-        formatted_results.append(f"{i+1}. Course: {meta.get('title')}. Eligibility: {meta.get('audience')}. Duration: {meta.get('duration')}")
+        formatted_results.append({
+            "title": meta.get("title", "N/A"),
+            "category": meta.get("category", "General"),
+            "url": meta.get("url", "#"),
+            "duration": meta.get("duration", "Self-paced"),
+            "audience": meta.get("audience", "All Learners"),
+            "description": res["doc"][:150] + "..." if res["doc"] else ""
+        })
             
     return jsonify({
         "results": formatted_results
