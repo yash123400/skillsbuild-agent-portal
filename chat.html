@@ -86,22 +86,32 @@
             const [inputValue, setInputValue] = useState('');
             const [recommendedCourses, setRecommendedCourses] = useState([]);
             const [isSearching, setIsSearching] = useState(false);
+            const [activePersona, setActivePersona] = useState('Unknown');
             const messagesEndRef = useRef(null);
 
-            const fetchRecommendations = async (query) => {
+            const fetchRecommendations = async (userQuery) => {
                 setIsSearching(true);
                 try {
-                    const response = await fetch('/api/search', {
+                    const response = await fetch('/api/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query })
+                        body: JSON.stringify({ message: userQuery, history: messages })
                     });
                     const data = await response.json();
-                    if (data.results && data.results.length > 0) {
-                        setRecommendedCourses(data.results);
+
+                    if (data.persona && data.persona !== 'unknown') {
+                        setActivePersona(data.persona.charAt(0).toUpperCase() + data.persona.slice(1));
+                    }
+
+                    if (data.reply) {
+                        setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+                    }
+                    if (data.courses && data.courses.length > 0) {
+                        setRecommendedCourses(data.courses);
                     }
                 } catch (error) {
-                    console.error("Error fetching courses:", error);
+                    console.error("Error fetching agent response:", error);
+                    setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, my logic core is momentarily offline." }]);
                 }
                 setIsSearching(false);
             };
@@ -123,17 +133,7 @@
                 setMessages(newMessages);
                 setInputValue('');
 
-                // Simulate simplistic agent flow based on our "start-guidance" rules
-                setTimeout(() => {
-                    let agentResponse = "I'm checking our catalog to find you the best matches.";
-                    if (userQuery.toLowerCase().includes('student') || userQuery.toLowerCase().includes('adult') || userQuery.toLowerCase().includes('educator')) {
-                        agentResponse = "Great! What specific tech field interests you today (e.g., AI, Cyber, Data)?";
-                    } else if (userQuery.toLowerCase().match(/ai|cyber|data|security/)) {
-                        agentResponse = `Awesome! I've located some excellent courses for you in our knowledge base. Check out the 'Recommended' sidebar.`;
-                        fetchRecommendations(userQuery);
-                    }
-                    setMessages(prev => [...prev, { role: 'assistant', content: agentResponse }]);
-                }, 800);
+                fetchRecommendations(userQuery);
             };
 
             return (
@@ -149,7 +149,7 @@
                                 </div>
                                 <div>
                                     <h1 className="text-xl font-semibold text-ibmGray-100">SkillsBuild Agent</h1>
-                                    <p className="text-sm text-gray-500">Corporate & Welcome Mode</p>
+                                    <p className="text-sm text-ibmBlue-60 font-medium tracking-wide uppercase">Viewing as: {activePersona}</p>
                                 </div>
                             </div>
                             <a href="/" className="text-ibmBlue-60 border border-ibmBlue-60 px-4 py-2 rounded-soft text-sm font-medium hover:bg-ibmBlue-60 hover:text-white transition-colors">
