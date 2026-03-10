@@ -143,23 +143,12 @@ def handle_chat():
     user_query = data.get("message", "").strip()
     history = data.get("history", [])
     
-    if not user_query:
-        return jsonify({"reply": "Welcome to SkillsBuild! To help you best, are you a student, educator, or adult learner?", "courses": [], "persona": "unknown"})
-        
+    # Stage One: Strict Persona Identification
+    # If history only contains the initial greeting, and user hasn't identified yet, block.
+    # We depend on deduce_persona_and_query to tell us if we know the persona.
     persona, query_type, is_ambiguous = deduce_persona_and_query(user_query, history)
     
-    # 4. Self-Correction Guardrail
-    # If the search results are empty AND the query looks like a keyword, set persona and prompt for interest.
-    is_persona_keyword = user_query.lower() in ["student", "educator", "teacher", "adult", "adult learner"]
-    
-    # 1. Stage One: Strict Persona Identification
-    # Block all searches until persona is identified.
-    if persona == "unknown" and query_type != "general":
-        # If they just typed a keyword, we now know their persona, so we shouldn't say it's unknown.
-        # But deduce_persona_and_query already caught it? 
-        # Let's ensure if they typed 'student', persona is 'student'.
-        pass 
-
+    # If persona is still unknown and it's not a general metadata query, block.
     if persona == "unknown" and query_type != "general":
         return jsonify({
             "reply": "Welcome to SkillsBuild! To help you best, are you a student, educator, or adult learner?",
@@ -167,20 +156,21 @@ def handle_chat():
             "persona": "unknown"
         })
         
-    # Stage 4 check: If they just set their persona, confirm it.
+    # Stage Four: Self-Correction Guardrail
+    # If they just provided the persona keyword, confirm and ask for interest.
+    is_persona_keyword = user_query.lower() in ["student", "educator", "teacher", "adult", "adult learner"]
     if is_persona_keyword and persona != "unknown":
-        role_label = persona.capitalize()
-        if persona == "educator": role_label = "Educator (Teacher)"
+        role_map = {"educator": "Educator", "student": "Student", "adult": "Adult Learner"}
         return jsonify({
-            "reply": f"I have set your role to {role_label}. What subjects are you interested in studying or teaching today?",
+            "reply": f"I have set your role to {role_map.get(persona, persona)}. What subjects are you interested in studying?",
             "courses": [],
             "persona": persona
         })
 
-    # Otherwise, perform the search
+    # Stage Two: Intent Classification & Routing
+    # Perform search strictly filtered by USER_PERSONA
     courses = query_chromadb(user_query, persona, query_type)
     
-    # Final Reply Logic
     reply = "I've checked our catalog and found some matches for you!"
     if persona == "educator":
         reply = "I've pulled some specialized lesson plans and toolkits for your classroom."
@@ -192,16 +182,23 @@ def handle_chat():
         reply = "Here is some general information and FAQ regarding your question."
         
     if not courses:
-        if is_persona_keyword:
-             reply = f"I have set your role to {persona.capitalize()}. What subjects are you interested in?"
-        else:
-             reply = "I searched our catalog but couldn't find a perfect match. Could you rephrase your interest?"
+        reply = "I searched our catalog but couldn't find a perfect match. Could you rephrase your interest?"
         
     return jsonify({
         "reply": reply,
         "courses": courses,
         "persona": persona
     })
+
+@app.route('/api/skillsbuild/search')
+def sovereign_search():
+    query = request.args.get('q', '')
+    n = int(request.args.get('n', 6))
+    # Catalog search is usually general/wide or we can default to 'general' category
+    # For a global search, we pass persona='unknown' which disables the category filter in query_chromadb (if not specified)
+    # But wait, query_chromadb logic: if persona not in list, where_filter is empty.
+    results = query_chromadb(query, "unknown", "course")
+    return jsonify({"courses": results})
 
 @app.route('/api/test-db')
 def test_db():
@@ -216,7 +213,7 @@ def test_db():
     except Exception as e:
         return jsonify({"error": str(e)})
 
-# Legacy fallback for backwards compat (if any)
+# Legacy fallback for backwards compat
 @app.route('/api/search', methods=['POST'])
 def legacy_search():
     data = request.json or {}
@@ -225,4 +222,5 @@ def legacy_search():
     return jsonify({"results": courses})
 
 if __name__ == '__main__':
+    # Increase n_results in query_chromadb to 10 for better fuzzy re-ranking
     app.run(port=5003, debug=True)
