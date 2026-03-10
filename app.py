@@ -140,25 +140,47 @@ def chat():
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     data = request.json or {}
-    user_query = data.get("message", "")
+    user_query = data.get("message", "").strip()
     history = data.get("history", [])
     
     if not user_query:
-        return jsonify({"reply": "I didn't quite catch that.", "courses": [], "persona": "unknown"})
+        return jsonify({"reply": "Welcome to SkillsBuild! To help you best, are you a student, educator, or adult learner?", "courses": [], "persona": "unknown"})
         
     persona, query_type, is_ambiguous = deduce_persona_and_query(user_query, history)
     
-    # 2. Enforce Persona Identification (Refined Step)
+    # 4. Self-Correction Guardrail
+    # If the search results are empty AND the query looks like a keyword, set persona and prompt for interest.
+    is_persona_keyword = user_query.lower() in ["student", "educator", "teacher", "adult", "adult learner"]
+    
+    # 1. Stage One: Strict Persona Identification
+    # Block all searches until persona is identified.
+    if persona == "unknown" and query_type != "general":
+        # If they just typed a keyword, we now know their persona, so we shouldn't say it's unknown.
+        # But deduce_persona_and_query already caught it? 
+        # Let's ensure if they typed 'student', persona is 'student'.
+        pass 
+
     if persona == "unknown" and query_type != "general":
         return jsonify({
-            "reply": "I'm Sentinel, your SkillsBuild Counselor. Before I search the catalog, I need to know: **Are you a student, teacher (educator), or an adult learner?**",
+            "reply": "Welcome to SkillsBuild! To help you best, are you a student, educator, or adult learner?",
             "courses": [],
             "persona": "unknown"
         })
         
-    # Otherwise, perform the search strictly filtered by persona
+    # Stage 4 check: If they just set their persona, confirm it.
+    if is_persona_keyword and persona != "unknown":
+        role_label = persona.capitalize()
+        if persona == "educator": role_label = "Educator (Teacher)"
+        return jsonify({
+            "reply": f"I have set your role to {role_label}. What subjects are you interested in studying or teaching today?",
+            "courses": [],
+            "persona": persona
+        })
+
+    # Otherwise, perform the search
     courses = query_chromadb(user_query, persona, query_type)
     
+    # Final Reply Logic
     reply = "I've checked our catalog and found some matches for you!"
     if persona == "educator":
         reply = "I've pulled some specialized lesson plans and toolkits for your classroom."
@@ -170,7 +192,10 @@ def handle_chat():
         reply = "Here is some general information and FAQ regarding your question."
         
     if not courses:
-        reply = "I searched our catalog but couldn't find a perfect match. Could you rephrase your interest?"
+        if is_persona_keyword:
+             reply = f"I have set your role to {persona.capitalize()}. What subjects are you interested in?"
+        else:
+             reply = "I searched our catalog but couldn't find a perfect match. Could you rephrase your interest?"
         
     return jsonify({
         "reply": reply,
