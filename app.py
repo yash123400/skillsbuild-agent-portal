@@ -25,22 +25,23 @@ try:
     tmp_path = "/tmp/skillsbuild_memory"
     
     # ChromaDB requires write access even for read-only Ops (SQLite lock files)
-    # Vercel filesystem is read-only except for /tmp
     if os.path.exists(source_path):
         if not os.path.exists(tmp_path):
             import shutil
             shutil.copytree(source_path, tmp_path)
         use_path = tmp_path
     else:
-        use_path = source_path # Fallback to original, likely will error later if doesn't exist
+        use_path = source_path # Fallback
         
     chroma_client = chromadb.PersistentClient(path=use_path)
-    # Ensure collection exists
-    collection = chroma_client.get_or_create_collection("skillsbuild_knowledge")
-    print(f"ChromaDB connected. Source: {source_path}, Effective: {use_path}")
+    # Ensure both collections are initialized
+    courses_col = chroma_client.get_or_create_collection("courses")
+    knowledge_col = chroma_client.get_or_create_collection("skillsbuild_knowledge")
+    print(f"ChromaDB connected. Courses: {courses_col.count()}, Knowledge: {knowledge_col.count()}")
 except Exception as e:
     print(f"ChromaDB initialization error: {e}")
-    collection = None
+    courses_col = None
+    knowledge_col = None
 
 import re
 
@@ -49,6 +50,14 @@ def extract_field(text, field_name):
     pattern = rf"{field_name}:\s*(.*?)(?:\n|$)"
     match = re.search(pattern, text, re.I)
     return match.group(1).strip() if match else None
+
+# Mapping for robust metadata filtering across collections
+CATEGORY_MAP = {
+    "student": ["High School Students", "College Students", "high_school_student", "college_student", "student"],
+    "educator": ["Educators", "educator"],
+    "adult": ["Adult Learners", "adult_learner", "adult"],
+    "general": ["General Support", "FAQ", "general_faq", "general"]
+}
 
 def deduce_persona_and_query(user_query, chat_history):
     user_inputs = [m.get("content", "").lower() for m in chat_history if m.get("role") == "user"]
@@ -76,52 +85,57 @@ def deduce_persona_and_query(user_query, chat_history):
     return persona, query_type, is_ambiguous
 
 def query_chromadb(query, persona, query_type):
-    if not collection: return []
+    if not courses_col and not knowledge_col: return []
     
-    def perform_query(p_val, q_type):
-        where_filter = {}
-        if q_type == "general":
-            where_filter = {"category": "general"}
-        elif p_val in ["educator", "adult", "student"]:
-            where_filter = {"category": p_val}
+    def perform_query(col, p_val, q_type):
+        if not col: return None
+        where_filter = None
         
+        if q_type == "general":
+            where_filter = {"category": {"$in": CATEGORY_MAP["general"]}}
+        elif p_val in CATEGORY_MAP:
+            where_filter = {"category": {"$in": CATEGORY_MAP[p_val]}}
+            
         try:
-            results = collection.query(
-                query_texts=[query],
-                n_results=10,
-                where=where_filter if where_filter else None
-            )
-            return results
-        except:
-            return None
+            return col.query(query_texts=[query], n_results=10, where=where_filter)
+        except Exception:
+            # Fallback to unfiltered if $in or category field is missing
+            return col.query(query_texts=[query], n_results=10)
 
     try:
-        # 1. Attempt filtered search
-        results = perform_query(persona, query_type)
+        # 1. Search across BOTH collections
+        results_courses = perform_query(courses_col, persona, query_type)
+        results_knowledge = perform_query(knowledge_col, persona, query_type)
         
-        # 2. Semantic Fallback if zero results
-        if (not results or not results.get("documents") or not results["documents"][0]) and persona != "unknown":
-            results = perform_query("unknown", "course")
-            
+        # 2. Semantic Fallback: if total results are zero, search everything with NO filters
+        c_docs = results_courses.get("documents", [[]])[0] if results_courses else []
+        k_docs = results_knowledge.get("documents", [[]])[0] if results_knowledge else []
+        
+        if not c_docs and not k_docs and persona != "unknown":
+            results_courses = perform_query(courses_col, "unknown", "course")
+            results_knowledge = perform_query(knowledge_col, "unknown", "course")
+
         matches = []
-        if results and "documents" in results and results["documents"]:
-            docs = results["documents"][0]
-            metadatas = results["metadatas"][0] if "metadatas" in results else [{}]*len(docs)
-            distances = results["distances"][0] if "distances" in results else [0.5]*len(docs)
+        for res in [results_courses, results_knowledge]:
+            if not res or not res.get("documents") or not res["documents"][0]:
+                continue
             
-            for d, m, dist in zip(docs, metadatas, distances):
-                score = 1.0 - dist
-                
-                title = m.get("title") or extract_field(d, "Title") or "Data missing in database"
+            docs = res["documents"][0]
+            metas = res["metadatas"][0] if "metadatas" in res and res["metadatas"] else [{}]*len(docs)
+            dists = res["distances"][0] if "distances" in res and res["distances"] else [0.5]*len(docs)
+            
+            for d, m, dist in zip(docs, metas, dists):
+                score = 1.0 - (dist if dist is not None else 0.5)
+                title = m.get("title") or extract_field(d, "Title") or "SkillsBuild Resource"
                 desc = m.get("description") or extract_field(d, "Description") or (d[:150] + "...")
                 url = m.get("url") or "#"
                 
-                if ":" in desc and len(desc) < 40:
+                if ":" in desc and len(desc) < 50:
                     desc = d.split("\n")[-1] if "\n" in d else d
 
                 matches.append({
                     "title": title,
-                    "category": m.get("category", "General"),
+                    "category": m.get("category") or m.get("persona") or "General",
                     "url": url,
                     "duration": m.get("duration", "Self-paced"),
                     "audience": m.get("audience", "All Learners"),
@@ -129,8 +143,15 @@ def query_chromadb(query, persona, query_type):
                     "score": score
                 })
         
-        matches.sort(key=lambda x: x["score"], reverse=True)
-        return matches[:4]
+        # Deduplicate and Sort
+        unique_matches = []
+        seen_urls = set()
+        for m in sorted(matches, key=lambda x: x["score"], reverse=True):
+            if m["url"] not in seen_urls:
+                unique_matches.append(m)
+                seen_urls.add(m["url"])
+                
+        return unique_matches[:4]
     except Exception as e:
         print(f"Query error: {e}")
         return []
@@ -149,12 +170,8 @@ def handle_chat():
     user_query = data.get("message", "").strip()
     history = data.get("history", [])
     
-    # Stage One: Strict Persona Identification
-    # If history only contains the initial greeting, and user hasn't identified yet, block.
-    # We depend on deduce_persona_and_query to tell us if we know the persona.
     persona, query_type, is_ambiguous = deduce_persona_and_query(user_query, history)
     
-    # If persona is still unknown and it's not a general metadata query, block.
     if persona == "unknown" and query_type != "general":
         return jsonify({
             "reply": "Welcome to SkillsBuild! To help you best, are you a student, educator, or adult learner?",
@@ -162,8 +179,6 @@ def handle_chat():
             "persona": "unknown"
         })
         
-    # Stage Four: Self-Correction Guardrail
-    # If they just provided the persona keyword, confirm and ask for interest.
     is_persona_keyword = user_query.lower() in ["student", "educator", "teacher", "adult", "adult learner"]
     if is_persona_keyword and persona != "unknown":
         role_map = {"educator": "Educator", "student": "Student", "adult": "Adult Learner"}
@@ -173,8 +188,6 @@ def handle_chat():
             "persona": persona
         })
 
-    # Stage Two: Intent Classification & Routing
-    # Perform search strictly filtered by USER_PERSONA
     courses = query_chromadb(user_query, persona, query_type)
     
     reply = "I've checked our catalog and found some matches for you!"
@@ -199,27 +212,24 @@ def handle_chat():
 @app.route('/api/skillsbuild/search')
 def sovereign_search():
     query = request.args.get('q', '')
-    n = int(request.args.get('n', 6))
-    # Catalog search is usually general/wide or we can default to 'general' category
-    # For a global search, we pass persona='unknown' which disables the category filter in query_chromadb (if not specified)
-    # But wait, query_chromadb logic: if persona not in list, where_filter is empty.
     results = query_chromadb(query, "unknown", "course")
     return jsonify({"courses": results})
 
 @app.route('/api/test-db')
 def test_db():
     try:
-        count = collection.count() if collection else -1
+        c_count = courses_col.count() if courses_col else -1
+        k_count = knowledge_col.count() if knowledge_col else -1
         return jsonify({
-            "status": "online" if collection else "offline",
-            "count": count,
+            "status": "online" if (courses_col or knowledge_col) else "offline",
+            "courses_count": c_count,
+            "knowledge_count": k_count,
             "tmp_exists": os.path.exists("/tmp/skillsbuild_memory"),
             "mem_exists": os.path.exists(os.path.join(BASE_DIR, "skillsbuild_memory"))
         })
     except Exception as e:
         return jsonify({"error": str(e)})
 
-# Legacy fallback for backwards compat
 @app.route('/api/search', methods=['POST'])
 def legacy_search():
     data = request.json or {}
@@ -228,5 +238,4 @@ def legacy_search():
     return jsonify({"results": courses})
 
 if __name__ == '__main__':
-    # Increase n_results in query_chromadb to 10 for better fuzzy re-ranking
     app.run(port=5003, debug=True)
