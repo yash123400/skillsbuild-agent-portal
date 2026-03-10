@@ -15,25 +15,29 @@ CORS(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Initialize ChromaDB connection with ABSOLUTE PATH
+# Hybrid Path Logic: Try relative path (Vercel) then absolute path (Local)
 try:
-    use_path = "/Users/yashkhemka/.gemini/antigravity/skillsbuild-agent-portal/skillsbuild_memory"
-    # Note: For Vercel, we still use the /tmp copy logic if the source exists
-    mem_path = use_path
+    rel_mem_path = os.path.join(BASE_DIR, "skillsbuild_memory")
+    abs_mem_path = "/Users/yashkhemka/.gemini/antigravity/skillsbuild-agent-portal/skillsbuild_memory"
+    
+    # Choose whichever exists
+    source_path = rel_mem_path if os.path.exists(rel_mem_path) else abs_mem_path
     tmp_path = "/tmp/skillsbuild_memory"
     
-    if os.path.exists(mem_path):
+    # ChromaDB requires write access even for read-only Ops (SQLite lock files)
+    # Vercel filesystem is read-only except for /tmp
+    if os.path.exists(source_path):
         if not os.path.exists(tmp_path):
             import shutil
-            shutil.copytree(mem_path, tmp_path)
+            shutil.copytree(source_path, tmp_path)
         use_path = tmp_path
+    else:
+        use_path = source_path # Fallback to original, likely will error later if doesn't exist
         
-    chroma_client = chromadb.PersistentClient(
-        path=use_path,
-        settings=chromadb.Settings(anonymized_telemetry=False, is_persistent=True)
-    )
+    chroma_client = chromadb.PersistentClient(path=use_path)
+    # Ensure collection exists
     collection = chroma_client.get_or_create_collection("skillsbuild_knowledge")
-    print(f"ChromaDB connected successfully. Path: {use_path}")
+    print(f"ChromaDB connected. Source: {source_path}, Effective: {use_path}")
 except Exception as e:
     print(f"ChromaDB initialization error: {e}")
     collection = None
