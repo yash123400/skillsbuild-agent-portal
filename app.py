@@ -42,20 +42,31 @@ except Exception as e:
     collection = None
 
 def deduce_persona_and_query(user_query, chat_history):
-    # Rule-based fallback if LLM is unavailable or no key is present
-    text = (user_query + " " + " ".join([m.get("content","") for m in chat_history])).lower()
+    # Use only user messages for persona detection to avoid "context poisoning" 
+    # from the assistant's initial question ("are you a student, educator...")
+    user_inputs = [m.get("content", "").lower() for m in chat_history if m.get("role") == "user"]
+    text = (user_query.lower() + " " + " ".join(user_inputs))
     
     # 1. Intent & Persona Detection
     persona = "unknown"
-    if "educator" in text or "teacher" in text or "admin" in text:
+    
+    # Check for specific role claims first
+    if any(k in text for k in ["i am a teacher", "i'm a teacher", "i am an educator", "i'm an educator", "educator"]):
         persona = "educator"
-    elif "adult" in text or "career" in text or "professional" in text:
-        persona = "adult"
-    elif "student" in text or "college" in text or "high school" in text:
+    elif any(k in text for k in ["i am a student", "i'm a student", "student"]):
         persona = "student"
+    elif any(k in text for k in ["i am an adult", "i'm an adult", "career change", "professional", "adult"]):
+        persona = "adult"
+    # Fallback to loose keyword match if still unknown
+    elif any(k in text for k in ["teacher", "lesson plan", "classroom"]):
+        persona = "educator"
+    elif any(k in text for k in ["high school", "college", "study"]):
+        persona = "student"
+    elif any(k in text for k in ["work", "job", "career"]):
+        persona = "adult"
         
     query_type = "course"
-    if "faq" in text or "terms" in text or "support" in text or "help" in text:
+    if any(k in text for k in ["faq", "terms", "support", "help", "how does"]):
         query_type = "general"
         
     # Skepticism Rule
@@ -145,6 +156,19 @@ def handle_chat():
         "courses": courses,
         "persona": persona
     })
+
+@app.route('/api/test-db')
+def test_db():
+    try:
+        count = collection.count() if collection else -1
+        return jsonify({
+            "status": "online" if collection else "offline",
+            "count": count,
+            "tmp_exists": os.path.exists("/tmp/skillsbuild_memory"),
+            "mem_exists": os.path.exists(os.path.join(BASE_DIR, "skillsbuild_memory"))
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 # Legacy fallback for backwards compat (if any)
 @app.route('/api/search', methods=['POST'])
