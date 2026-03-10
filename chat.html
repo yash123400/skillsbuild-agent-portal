@@ -210,30 +210,36 @@
                             ) : recommendedCourses.length > 0 ? (
                                 recommendedCourses.map((course, idx) => {
                                     return (
-                                        <article key={idx} className="bg-white rounded-lg border border-ibmGray-20 shadow-sm overflow-hidden flex flex-col group">
+                                        <article key={idx} className="bg-white rounded-lg border border-ibmGray-20 shadow-sm overflow-hidden flex flex-col group transition-all hover:shadow-md">
                                             <div className="p-5 flex-1 space-y-3">
-                                                <div className="inline-flex px-3 py-1 rounded-full bg-ibmBlue-10">
-                                                    <span className="text-ibmBlue-60 text-[10px] font-semibold uppercase tracking-wider">{course.category || 'General'}</span>
+                                                <div className="flex justify-between items-start">
+                                                    <div className="inline-flex px-3 py-1 rounded-full bg-ibmBlue-10">
+                                                        <span className="text-ibmBlue-60 text-[10px] font-semibold uppercase tracking-wider">{course.category || 'General'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 text-[10px] font-bold text-ibmBlue-60 bg-ibmBlue-10 px-2 py-1 rounded">
+                                                        <span className="material-symbols-outlined text-[12px]">verified</span>
+                                                        <span>SkillsBuild Verified</span>
+                                                    </div>
                                                 </div>
                                                 <a className="block text-ibmBlue-60 text-lg font-bold hover:underline leading-snug" href={course.url || '#'} target="_blank">
                                                     {course.title}
                                                 </a>
-                                                <p className="text-ibmGray-80 text-sm leading-relaxed line-clamp-2">
+                                                <p className="text-ibmGray-80 text-sm leading-relaxed">
                                                     {course.description}
                                                 </p>
-                                                <div className="flex items-center gap-4 text-gray-500 text-xs pt-1">
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="material-symbols-outlined text-[16px]">schedule</span>
+                                                <div className="flex flex-wrap items-center gap-2 pt-2">
+                                                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded text-[11px] text-gray-600 font-medium">
+                                                        <span className="material-symbols-outlined text-[14px]">schedule</span>
                                                         <span>{course.duration || 'Self-paced'}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="material-symbols-outlined text-[16px]">group</span>
+                                                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded text-[11px] text-gray-600 font-medium">
+                                                        <span className="material-symbols-outlined text-[14px]">group</span>
                                                         <span>{course.audience || 'All Learners'}</span>
                                                     </div>
                                                 </div>
                                             </div>
                                             <a href={course.url || '#'} target="_blank" className="w-full bg-ibmBlue-60 hover:bg-blue-700 text-white font-semibold py-3 px-6 flex items-center justify-center gap-2 transition-colors text-[14px]">
-                                                View on SkillsBuild <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                                                View on SkillsBuild <span className="material-symbols-outlined text-sm">open_in_new</span>
                                             </a>
                                         </article>
                                     );

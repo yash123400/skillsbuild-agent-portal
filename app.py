@@ -74,6 +74,12 @@ def deduce_persona_and_query(user_query, chat_history):
     
     return persona, query_type, is_ambiguous
 
+try:
+    from rapidfuzz import process, fuzz
+    FUZZY_AVAILABLE = True
+except ImportError:
+    FUZZY_AVAILABLE = False
+
 def query_chromadb(query, persona, query_type):
     if not collection: return []
     
@@ -84,9 +90,10 @@ def query_chromadb(query, persona, query_type):
         where_filter = {"category": persona}
         
     try:
+        # Standard Vector Search
         results = collection.query(
             query_texts=[query],
-            n_results=4,
+            n_results=10, # Get more for potential fuzzy re-ranking
             where=where_filter if where_filter else None
         )
         
@@ -94,17 +101,30 @@ def query_chromadb(query, persona, query_type):
         if results and "documents" in results and results["documents"]:
             docs = results["documents"][0]
             metas = results["metadatas"][0] if "metadatas" in results else [{}]*len(docs)
-            for d, m in zip(docs, metas):
-                # Clean doc parsing if we injected Docling format
+            distances = results["distances"][0] if "distances" in results else [0.5]*len(docs)
+            
+            for d, m, dist in zip(docs, metas, distances):
+                score = 1.0 - dist # Simplified similarity
+                
+                # Fuzzy logical fallback for low vector scores
+                if score < 0.4 and FUZZY_AVAILABLE:
+                    title_fuzzy = fuzz.partial_ratio(query.lower(), m.get("title", "").lower())
+                    if title_fuzzy > 70: # 70% threshold
+                        score = title_fuzzy / 100.0
+                
                 matches.append({
                     "title": m.get("title", "Resource"),
-                    "category": m.get("category", "General"),
+                    "category": m.get("category", m.get("persona", "General")),
                     "url": m.get("url", "#"),
                     "duration": m.get("duration", "Self-paced"),
-                    "audience": "All Learners" if "default" not in m else m["default"],
-                    "description": d[:150].replace('\n', ' ') + "..."
+                    "audience": m.get("audience", m.get("default", "All Learners")),
+                    "description": d.replace('\n', ' ').strip(),
+                    "score": score
                 })
-        return matches
+        
+        # Re-sort by score (mix of vector and fuzzy)
+        matches.sort(key=lambda x: x["score"], reverse=True)
+        return matches[:4]
     except Exception as e:
         print(f"Query error: {e}")
         return []
@@ -128,14 +148,15 @@ def handle_chat():
         
     persona, query_type, is_ambiguous = deduce_persona_and_query(user_query, history)
     
-    if is_ambiguous:
+    # 2. Enforce Persona Identification (Refined Step)
+    if persona == "unknown" and query_type != "general":
         return jsonify({
-            "reply": "To give you the right resources, are you looking for classroom materials as a teacher, or a course for yourself as a student?",
+            "reply": "I'm Sentinel, your SkillsBuild Counselor. Before I search the catalog, I need to know: **Are you a student, teacher (educator), or an adult learner?**",
             "courses": [],
-            "persona": persona
+            "persona": "unknown"
         })
         
-    # Otherwise, perform the search
+    # Otherwise, perform the search strictly filtered by persona
     courses = query_chromadb(user_query, persona, query_type)
     
     reply = "I've checked our catalog and found some matches for you!"
