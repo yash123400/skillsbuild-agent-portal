@@ -15,49 +15,48 @@ CORS(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Initialize ChromaDB connection
+# Initialize ChromaDB connection with ABSOLUTE PATH
 try:
-    mem_path = os.path.join(BASE_DIR, "skillsbuild_memory")
+    use_path = "/Users/yashkhemka/.gemini/antigravity/skillsbuild-agent-portal/skillsbuild_memory"
+    # Note: For Vercel, we still use the /tmp copy logic if the source exists
+    mem_path = use_path
     tmp_path = "/tmp/skillsbuild_memory"
     
-    # In Vercel, the filesystem is read-only except for /tmp.
-    # ChromaDB's SQLite needs to write lock files/WAL even for reads.
-    # Copy to /tmp to allow Chroma to initialize successfully.
     if os.path.exists(mem_path):
         if not os.path.exists(tmp_path):
             import shutil
             shutil.copytree(mem_path, tmp_path)
         use_path = tmp_path
-    else:
-        use_path = mem_path # fallback
         
     chroma_client = chromadb.PersistentClient(
         path=use_path,
         settings=chromadb.Settings(anonymized_telemetry=False, is_persistent=True)
     )
     collection = chroma_client.get_or_create_collection("skillsbuild_knowledge")
-    print(f"ChromaDB connected successfully. Collection count: {collection.count()}")
+    print(f"ChromaDB connected successfully. Path: {use_path}")
 except Exception as e:
     print(f"ChromaDB initialization error: {e}")
     collection = None
 
+import re
+
+def extract_field(text, field_name):
+    """Parses Title: or Description: from raw document text."""
+    pattern = rf"{field_name}:\s*(.*?)(?:\n|$)"
+    match = re.search(pattern, text, re.I)
+    return match.group(1).strip() if match else None
+
 def deduce_persona_and_query(user_query, chat_history):
-    # Use only user messages for persona detection to avoid "context poisoning" 
-    # from the assistant's initial question ("are you a student, educator...")
     user_inputs = [m.get("content", "").lower() for m in chat_history if m.get("role") == "user"]
     text = (user_query.lower() + " " + " ".join(user_inputs))
     
-    # 1. Intent & Persona Detection
     persona = "unknown"
-    
-    # Check for specific role claims first
     if any(k in text for k in ["i am a teacher", "i'm a teacher", "i am an educator", "i'm an educator", "educator"]):
         persona = "educator"
     elif any(k in text for k in ["i am a student", "i'm a student", "student"]):
         persona = "student"
     elif any(k in text for k in ["i am an adult", "i'm an adult", "career change", "professional", "adult"]):
         persona = "adult"
-    # Fallback to loose keyword match if still unknown
     elif any(k in text for k in ["teacher", "lesson plan", "classroom"]):
         persona = "educator"
     elif any(k in text for k in ["high school", "college", "study"]):
@@ -69,60 +68,63 @@ def deduce_persona_and_query(user_query, chat_history):
     if any(k in text for k in ["faq", "terms", "support", "help", "how does"]):
         query_type = "general"
         
-    # Skepticism Rule
     is_ambiguous = persona == "unknown" and query_type != "general"
-    
     return persona, query_type, is_ambiguous
-
-try:
-    from rapidfuzz import process, fuzz
-    FUZZY_AVAILABLE = True
-except ImportError:
-    FUZZY_AVAILABLE = False
 
 def query_chromadb(query, persona, query_type):
     if not collection: return []
     
-    where_filter = {}
-    if query_type == "general":
-        where_filter = {"category": "general"}
-    elif persona in ["educator", "adult", "student"]:
-        where_filter = {"category": persona}
+    def perform_query(p_val, q_type):
+        where_filter = {}
+        if q_type == "general":
+            where_filter = {"category": "general"}
+        elif p_val in ["educator", "adult", "student"]:
+            where_filter = {"category": p_val}
         
+        try:
+            results = collection.query(
+                query_texts=[query],
+                n_results=10,
+                where=where_filter if where_filter else None
+            )
+            return results
+        except:
+            return None
+
     try:
-        # Standard Vector Search
-        results = collection.query(
-            query_texts=[query],
-            n_results=10, # Get more for potential fuzzy re-ranking
-            where=where_filter if where_filter else None
-        )
+        # 1. Attempt filtered search
+        results = perform_query(persona, query_type)
         
+        # 2. Semantic Fallback if zero results
+        if (not results or not results.get("documents") or not results["documents"][0]) and persona != "unknown":
+            results = perform_query("unknown", "course")
+            
         matches = []
         if results and "documents" in results and results["documents"]:
             docs = results["documents"][0]
-            metas = results["metadatas"][0] if "metadatas" in results else [{}]*len(docs)
+            metadatas = results["metadatas"][0] if "metadatas" in results else [{}]*len(docs)
             distances = results["distances"][0] if "distances" in results else [0.5]*len(docs)
             
-            for d, m, dist in zip(docs, metas, distances):
-                score = 1.0 - dist # Simplified similarity
+            for d, m, dist in zip(docs, metadatas, distances):
+                score = 1.0 - dist
                 
-                # Fuzzy logical fallback for low vector scores
-                if score < 0.4 and FUZZY_AVAILABLE:
-                    title_fuzzy = fuzz.partial_ratio(query.lower(), m.get("title", "").lower())
-                    if title_fuzzy > 70: # 70% threshold
-                        score = title_fuzzy / 100.0
+                title = m.get("title") or extract_field(d, "Title") or "Data missing in database"
+                desc = m.get("description") or extract_field(d, "Description") or (d[:150] + "...")
+                url = m.get("url") or "#"
                 
+                if ":" in desc and len(desc) < 40:
+                    desc = d.split("\n")[-1] if "\n" in d else d
+
                 matches.append({
-                    "title": m.get("title", "Resource"),
-                    "category": m.get("category", m.get("persona", "General")),
-                    "url": m.get("url", "#"),
+                    "title": title,
+                    "category": m.get("category", "General"),
+                    "url": url,
                     "duration": m.get("duration", "Self-paced"),
-                    "audience": m.get("audience", m.get("default", "All Learners")),
-                    "description": d.replace('\n', ' ').strip(),
+                    "audience": m.get("audience", "All Learners"),
+                    "description": desc.replace('\n', ' ').strip(),
                     "score": score
                 })
         
-        # Re-sort by score (mix of vector and fuzzy)
         matches.sort(key=lambda x: x["score"], reverse=True)
         return matches[:4]
     except Exception as e:
