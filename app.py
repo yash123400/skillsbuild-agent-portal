@@ -18,7 +18,23 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Initialize ChromaDB connection
 try:
     mem_path = os.path.join(BASE_DIR, "skillsbuild_memory")
-    chroma_client = chromadb.PersistentClient(path=mem_path)
+    tmp_path = "/tmp/skillsbuild_memory"
+    
+    # In Vercel, the filesystem is read-only except for /tmp.
+    # ChromaDB's SQLite needs to write lock files/WAL even for reads.
+    # Copy to /tmp to allow Chroma to initialize successfully.
+    if os.path.exists(mem_path):
+        if not os.path.exists(tmp_path):
+            import shutil
+            shutil.copytree(mem_path, tmp_path)
+        use_path = tmp_path
+    else:
+        use_path = mem_path # fallback
+        
+    chroma_client = chromadb.PersistentClient(
+        path=use_path,
+        settings=chromadb.Settings(anonymized_telemetry=False, is_persistent=True)
+    )
     collection = chroma_client.get_or_create_collection("skillsbuild_knowledge")
     print(f"ChromaDB connected successfully. Collection count: {collection.count()}")
 except Exception as e:
